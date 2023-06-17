@@ -14,8 +14,12 @@ from help_func import show_new_cols
 
 nationwide_data = Dataset(r'./rawdata/August 2018 Nationwide.csv')
 air_carriers_data = Dataset(r'./rawdata/Air Carriers')
+
 date_transformed_data = Dataset("./curated/date_tranformed.csv")
 date_transformed_data_new = Dataset("./curated/date_tranformed_new.csv")
+
+air_carriers_transformed_data = Dataset("./curated/air_carriers_transformed_data.csv")
+air_carriers_transformed_data_new = Dataset("./curated/air_carriers_transformed_data_new.csv")
 
 # A DAG represents a workflow, a collection of tasks
 @dag(dag_id="load_and_transform", start_date=datetime(2023, 6, 11), schedule="@once")
@@ -209,16 +213,38 @@ def etl_process():
                 source.append(new_data)
                 source.to_csv(date_transformed_data.uri)
 
+    
+    @task(outlets=[air_carriers_transformed_data,air_carriers_transformed_data_new])
+    def add_changes_to_air_carriers_table(df:pd.DataFrame):
+        # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
+        if not os.path.exists(air_carriers_transformed_data.uri):
+
+            df.to_csv(air_carriers_transformed_data.uri)
+            df.to_csv(air_carriers_transformed_data_new.uri)
+        
+        else:
+
+            print(os.path.exists(air_carriers_transformed_data.uri))
+            source = pd.read_csv(air_carriers_transformed_data.uri)
+            new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
+
+            if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
+                new_data.to_csv(air_carriers_transformed_data_new.uri)
+
+                source.append(new_data)
+                source.to_csv(air_carriers_transformed_data.uri)
+
 
 
     data = load_data_nationwide()
     data_carriers = load_air_carriers()
 
     air_carriers = tranform_air_carriers(data_carriers)
-
     times = create_time_table(data)
     dates = create_date_table(data)
+
     save_date = add_changes_to_date_table(dates)
+    save_air_cattiets = add_changes_to_air_carriers_table(air_carriers)
 
 
 etl_process()
