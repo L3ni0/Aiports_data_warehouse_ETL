@@ -12,9 +12,10 @@ from airflow.models.baseoperator import chain
 import os
 from help_func import show_new_cols
 
-
-date_transformed_data = Dataset("/tmp/date_tranformed.csv")
-date_transformed_data_new = Dataset("tmp/date_tranformed_new.csv")
+nationwide_data = Dataset(r'./rawdata/August 2018 Nationwide.csv')
+air_carriers_data = Dataset(r'./rawdata/Air Carriers')
+date_transformed_data = Dataset("./curated/date_tranformed.csv")
+date_transformed_data_new = Dataset("./curated/date_tranformed_new.csv")
 
 # A DAG represents a workflow, a collection of tasks
 @dag(dag_id="load_and_transform", start_date=datetime(2023, 6, 11), schedule="@once")
@@ -22,17 +23,16 @@ def etl_process():
     
        
 
-    @task()
+    @task(inlets=[nationwide_data])
     def load_data_nationwide():
         
-        df = pd.read_csv(r'./rawdata/August 2018 Nationwide.csv')
+        df = pd.read_csv(nationwide_data.uri)
         return df
         
-    @task()
+    @task(inlets=[air_carriers_data])
     def load_air_carriers():
 
-        path = r'./rawdata/Air Carriers'
-        df = pd.read_csv(path)
+        df = pd.read_csv(air_carriers_data.uri)
 
         return df
 
@@ -192,16 +192,19 @@ def etl_process():
     @task(outlets=[date_transformed_data,date_transformed_data_new])
     def add_changes_to_date_table(df:pd.DataFrame):
         # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
-        if os.path.isfile(date_transformed_data.uri):
+        if not os.path.exists(date_transformed_data.uri):
+
             df.to_csv(date_transformed_data.uri)
             df.to_csv(date_transformed_data_new.uri)
         
         else:
+
+            print(os.path.exists(date_transformed_data.uri))
             source = pd.read_csv(date_transformed_data.uri)
             new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
 
             if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
-                new_data.to_csv(date_transformed_data_new)
+                new_data.to_csv(date_transformed_data_new.uri)
 
                 source.append(new_data)
                 source.to_csv(date_transformed_data.uri)
