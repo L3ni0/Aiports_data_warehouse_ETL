@@ -10,9 +10,11 @@ import pandas as pd
 from pyspark.sql import Row
 from airflow.models.baseoperator import chain
 import os
+from help_func import show_new_cols
 
 
 date_transformed_data = Dataset("/tmp/date_tranformed.csv")
+date_transformed_data_new = Dataset("tmp/date_tranformed_new.csv")
 
 # A DAG represents a workflow, a collection of tasks
 @dag(dag_id="load_and_transform", start_date=datetime(2023, 6, 11), schedule="@once")
@@ -187,11 +189,23 @@ def etl_process():
         
         return create_time_frame()
 
-    @task(outlets=[date_transformed_data])
+    @task(outlets=[date_transformed_data,date_transformed_data_new])
     def add_changes_to_date_table(df:pd.DataFrame):
-        print(date_transformed_data.uri)
-        print(date_transformed_data)
-        df.to_csv(date_transformed_data.uri)
+        # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
+        if os.path.isfile(date_transformed_data.uri):
+            df.to_csv(date_transformed_data.uri)
+            df.to_csv(date_transformed_data_new.uri)
+        
+        else:
+            source = pd.read_csv(date_transformed_data.uri)
+            new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
+
+            if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
+                new_data.to_csv(date_transformed_data_new)
+
+                source.append(new_data)
+                source.to_csv(date_transformed_data.uri)
+
 
 
     data = load_data_nationwide()
