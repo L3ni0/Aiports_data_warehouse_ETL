@@ -1,4 +1,4 @@
-air_carrier_id_pk,airport_code,name,city,country
+airport_id_pk,airport_code,name,city,country
 0,01A,Afognak Lake Airport,Afognak Lake,United States
 1,03A,Bear Creek Mining Strip,Granite Mountain,United States
 2,04A,Lik Mining Camp,Lik,United States
