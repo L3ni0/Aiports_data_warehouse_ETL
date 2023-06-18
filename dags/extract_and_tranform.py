@@ -335,7 +335,7 @@ def etl_process():
             df.rename(columns={original_name:col_name},inplace=True)
 
         df.drop(columns=['FL_DATE',"OP_CARRIER_AIRLINE_ID","TAIL_NUM","OP_CARRIER_FL_NUM","ORIGIN_AIRPORT_ID","ORIGIN_AIRPORT_SEQ_ID","ORIGIN_CITY_MARKET_ID","ORIGIN","DEST_AIRPORT_ID","DEST_AIRPORT_SEQ_ID","DEST_CITY_MARKET_ID","DEST","DEP_DELAY",'ARR_DELAY','CANCELLED','CANCELLATION_CODE','CRS_ELAPSED_TIME','ACTUAL_ELAPSED_TIME','CARRIER_DELAY','WEATHER_DELAY','NAS_DELAY','SECURITY_DELAY',"LATE_AIRCRAFT_DELAY",'Unnamed: 28'],inplace=True)
-        df.rename(columns={'DEP_DELAY_NEW':'departure_delay', 'ARR_DELAY_NEW':'arrival_delay'})
+        df.rename(columns={'DEP_DELAY_NEW':'departure_delay', 'ARR_DELAY_NEW':'arrival_delay'},inplace=True)
         
         return df
     
