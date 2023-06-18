@@ -1,1 +1,1 @@
-air_carrier_id_pk,airport_code,name,city
+airport_id_pk,airport_code,name,city,country

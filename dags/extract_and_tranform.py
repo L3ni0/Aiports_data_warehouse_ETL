@@ -6,7 +6,9 @@ from datetime import datetime, date
 import pandas as pd
 import os
 from help_func import show_new_cols
-# from geopy.geocoders import Nominatim
+import sys
+import subprocess
+
 
 nationwide_data = Dataset(r'./rawdata/August 2018 Nationwide.csv')
 air_carriers_data = Dataset(r'./rawdata/Air Carriers')
@@ -18,14 +20,22 @@ date_transformed_data_new = Dataset("./curated/date_tranformed_new.csv")
 air_carriers_transformed_data = Dataset("./curated/air_carriers_transformed_data.csv")
 air_carriers_transformed_data_new = Dataset("./curated/air_carriers_transformed_data_new.csv")
 
-airports_data_transformed_data = Dataset("./curated/airports_transformed_data.csv")
-airports_data_transformed_data_new = Dataset("./curated/airports_transformed_data_new.csv")
+airports_transformed_data = Dataset("./curated/airports_transformed_data.csv")
+airports_transformed_data_new = Dataset("./curated/airports_transformed_data_new.csv")
+
+cancelations_transformed_data = Dataset("./curated/cancelations_transformed_data.csv")
+cancelations_transformed_data_new = Dataset("./curated/cancelations_transformed_data_new.csv")
+
+time_transformed_data = Dataset("./curated/time_transformed_data.csv")
+time_transformed_data_new = Dataset("./curated/time_transformed_data_new.csv")
+
+
 
 # A DAG represents a workflow, a collection of tasks
 @dag(dag_id="load_and_transform", start_date=datetime(2023, 6, 11), schedule="@once")
 def etl_process():
-    
-       
+
+
     # extracting source file
     @task(inlets=[nationwide_data])
     def load_data_nationwide():
@@ -50,6 +60,7 @@ def etl_process():
     # transforming part
     @task()
     def tranform_airports(df:pd.DataFrame):
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'geopy'])
         
         def name_col(row):
             if not row or ':' not in row:
@@ -64,26 +75,30 @@ def etl_process():
             return row.split(',')[0].strip()
         
 
-        # geolocator = Nominatim(user_agent = "coutry finder")
-        # def country_col(row):
+       
+        def country_col(row):
 
-        #     if not row or ':' not in row:
-        #         return 'Not specified'
+            if not row or ':' not in row:
+                return 'Not specified'
             
-        #     result = geolocator.geocode(row.split(':')[0].strip())
-        #     return result.split(',')[-1].strip()
+            country = row.split(':')[0].split(',')[1].strip()
+            if len(country) > 2:
+                return country
+            else:
+                return 'United States'
+          
+        
 
         
         df['name'] = df.Description.apply(name_col)
         df['city'] = df.Description.apply(city_col)
-        # df['country'] = df.Description.apply(city_col)
-        df["air_carrier_id_pk"] = df.index
+        df['country'] = df.Description.apply(country_col)
+        df["airport_id_pk"] = df.index
         df.rename(columns= {'Code': 'airport_code'},inplace=True)
 
         df.drop(columns=['Description'], inplace=True)
 
-        # df = df[['air_carrier_id_pk','airport_code','name','city','country']]
-        df = df[['air_carrier_id_pk','airport_code','name','city']]
+        df = df[['airport_id_pk','airport_code','name','city','country']]
         df.drop_duplicates(inplace=True)
         return df
 
@@ -284,7 +299,40 @@ def etl_process():
         return df
 
 
-    @task(outlets=[date_transformed_data,date_transformed_data_new])
+    @task()
+    def transform_flight_table(main_df, airports_df, air_carriers_df, dates_df, time_df, delay_df,cancelation_df):
+        # merging part
+        df = pd.merge(main_df,airports_df[['airport_code',"airport_id_pk"]],how='left',left_on='ORIGIN',right_on='airport_code',suffixes=('','')).drop(columns='airport_code')
+        df.rename(columns={'airport_id_pk':'arrival_airport_id_fk'},inplace=True)
+        
+        df = pd.merge(df,airports_df[['airport_code',"airport_id_pk"]],how='left',left_on='ORIGIN',right_on='airport_code',suffixes=('','')).drop(columns='airport_code')
+        df.rename(columns={'airport_id_pk':'destination_airport_id_fk'},inplace=True)
+
+        df = pd.merge(df,dates_df[['full_date',"date_id_pk"]],how='left',left_on='ORIGIN',right_on='full_date',suffixes=('','')).drop(columns='full_date')
+        df.rename(columns={'date_id_pk':'date_id_fk'},inplace=True)
+
+        df.rename(columns={'OP_CARRIER_AIRLINE_ID':"air_carrier_id_fk"})
+
+        time_cols = ['departure_time_fk','departure_final_time_fk','arrival_time_fk','arrivel_final_time_fk']
+
+        df["ARR_TIME"].fillna(0,inplace=True)
+        df['ARR_DELAY'].fillna(0,inplace=True)
+        df["ARR_TIME"] =df["ARR_TIME"].astype('int64')
+        df["ARR_DELAY"] = df["ARR_DELAY"].astype('int64')
+
+        df['CRS_ARR_TIME'] = df["ARR_TIME"] + (df['ARR_DELAY'] // 60) * 100 + df['ARR_DELAY'] % 60
+        original_time_cols = ['CRS_DEP_TIME',"DEP_TIME","ARR_TIME",'CRS_ARR_TIME']
+        for col_name, original_name in zip(time_cols,original_time_cols):
+            df[original_name].fillna(0,inplace=True)
+            df[original_name] = df[original_name].astype('int64')
+            df[original_name] = df[original_name] % 60 + (df[original_name] // 100) * 60
+            df.rename(columns={original_name:col_name},inplace=True)
+
+
+        print(df)
+        return df
+
+    @task()
     def add_changes_to_date_table(df:pd.DataFrame):
         # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
         if not os.path.exists(date_transformed_data.uri):
@@ -302,9 +350,11 @@ def etl_process():
 
                 source.append(new_data)
                 source.to_csv(date_transformed_data.uri, index=False)
+        
+        return df
 
     
-    @task(outlets=[air_carriers_transformed_data,air_carriers_transformed_data_new])
+    @task()
     def add_changes_to_air_carriers_table(df:pd.DataFrame):
         # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
         if not os.path.exists(air_carriers_transformed_data.uri):
@@ -322,27 +372,71 @@ def etl_process():
 
                 source.append(new_data)
                 source.to_csv(air_carriers_transformed_data.uri, index=False)
-
     
-    @task(outlets=[airports_data_transformed_data,airports_data_transformed_data_new])
+        return df
+    
+    @task()
     def add_changes_to_airports_table(df:pd.DataFrame):
         # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
-        if not os.path.exists(airports_data_transformed_data.uri):
+        if not os.path.exists(airports_transformed_data.uri):
 
-            df.to_csv(airports_data_transformed_data.uri, index=False)
-            df.to_csv(airports_data_transformed_data_new.uri, index=False)
+            df.to_csv(airports_transformed_data.uri, index=False)
+            df.to_csv(airports_transformed_data_new.uri, index=False)
         
         else:
 
-            source = pd.read_csv(airports_data_transformed_data.uri)
+            source = pd.read_csv(airports_transformed_data.uri)
             new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
 
             if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
-                new_data.to_csv(airports_data_transformed_data_new.uri, index=False)
+                new_data.to_csv(airports_transformed_data_new.uri, index=False)
 
                 source.append(new_data)
-                source.to_csv(airports_data_transformed_data.uri, index=False)
+                source.to_csv(airports_transformed_data.uri, index=False)
+        
+        return df
+    
+    @task()
+    def add_changes_to_cancelations_table(df:pd.DataFrame):
+        # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
+        if not os.path.exists(cancelations_transformed_data.uri):
 
+            df.to_csv(cancelations_transformed_data.uri, index=False)
+            df.to_csv(cancelations_transformed_data_new.uri, index=False)
+        
+        else:
+
+            source = pd.read_csv(cancelations_transformed_data.uri)
+            new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
+
+            if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
+                new_data.to_csv(cancelations_transformed_data_new.uri, index=False)
+
+                source.append(new_data)
+                source.to_csv(cancelations_transformed_data.uri, index=False)
+
+        return df
+
+    @task()
+    def add_changes_to_time_table(df:pd.DataFrame):
+        # mamy tabele ..new.csv aby do bazy danych wysłać tylko nowe rekody
+        if not os.path.exists(time_transformed_data.uri):
+
+            df.to_csv(time_transformed_data.uri, index=False)
+            df.to_csv(time_transformed_data_new.uri, index=False)
+        
+        else:
+
+            source = pd.read_csv(time_transformed_data.uri)
+            new_data = show_new_cols(source,df) #fukncja znajdująca nowe kolumny
+
+            if new_data.empty: # jeśli istnieją zmiany to je dodaj do pliku
+                new_data.to_csv(time_transformed_data_new.uri, index=False)
+
+                source.append(new_data)
+                source.to_csv(time_transformed_data.uri, index=False)
+
+        return df
 
 
     data = load_data_nationwide()
@@ -355,10 +449,13 @@ def etl_process():
     dates = transform_date_table(data)
     delays = transform_delays_table(data)
     cancelations = transform_cancelations_table(data)
-
+    
     save_date = add_changes_to_date_table(dates)
-    save_air_cattiets = add_changes_to_air_carriers_table(air_carriers)
+    save_air_carriers = add_changes_to_air_carriers_table(air_carriers)
     save_airports = add_changes_to_airports_table(airports)
+    save_cancelations = add_changes_to_cancelations_table(cancelations)
+    save_times = add_changes_to_time_table(times)
 
+    flights = transform_flight_table(data,save_airports,save_air_carriers,save_date,save_times,delays,save_cancelations)
 
 etl_process()
