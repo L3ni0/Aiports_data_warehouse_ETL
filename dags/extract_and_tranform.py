@@ -84,6 +84,7 @@ def etl_process():
 
         # df = df[['air_carrier_id_pk','airport_code','name','city','country']]
         df = df[['air_carrier_id_pk','airport_code','name','city']]
+        df.drop_duplicates(inplace=True)
         return df
 
 
@@ -114,7 +115,7 @@ def etl_process():
 
 
     @task()
-    def transform_date_table(df):
+    def transform_date_table(df:pd.DataFrame):
         def add_date(new_date, date_table_dict):
             # dodaje nową datę do dict date_table_dict, gdzie new_date to string w formacie YYYY-MM-DD, a date_table_dict
             # przechowuje elementy, które trafią do dataframe
@@ -186,7 +187,7 @@ def etl_process():
     
 
     @task()
-    def transform_time_table(df):
+    def transform_time_table(df:pd.DataFrame):
         def create_time_frame():
 
             # tworzę szkielet słownika, który, po uzupełnieniu danymi, zostanie przekształcony na dataframe
@@ -253,12 +254,35 @@ def etl_process():
 
         df = df[["CANCELLED","CANCELLATION_CODE"]]
         df.drop_duplicates(inplace=True)
-        
-        df['cancelation_id_pk'] = df.index
-        df.rename(columns={"CANCELLED":'is_canceled', 'CANCELLATION_CODE':'CANCELLATION_CODE'.lower()})
+       
+        df = df.rename_axis('cancelation_id_pk').reset_index()
+        df.rename(columns={"CANCELLED":'is_canceled', 'CANCELLATION_CODE':'cancellation_code'},inplace=True)
+
+        df = df[['cancelation_id_pk','is_canceled','cancellation_code']]
 
         return df
     
+    @task()
+    def transform_delays_table(df:pd.DataFrame):
+
+        original_cols = ["CRS_ELAPSED_TIME","ACTUAL_ELAPSED_TIME","CARRIER_DELAY","WEATHER_DELAY","NAS_DELAY","SECURITY_DELAY","LATE_AIRCRAFT_DELAY"]
+        df = df[original_cols]
+        df = df.astype('float64')
+
+        df["ACTUAL_ELAPSED_TIME"].fillna(df["CRS_ELAPSED_TIME"],inplace=True)
+        df.fillna(0,inplace=True)
+        df['other_type_delay'] = df["ACTUAL_ELAPSED_TIME"] - df['CRS_ELAPSED_TIME']
+        df.drop(columns=['CRS_ELAPSED_TIME','ACTUAL_ELAPSED_TIME'],inplace=True)
+
+        rename_dict = {name: name.lower() for name in original_cols[2:]}
+        df.rename(columns=rename_dict, inplace=True)
+
+        df.drop_duplicates(inplace=True)
+
+        df = df.rename_axis('delay_id_pk').reset_index()
+
+        return df
+
 
     @task(outlets=[date_transformed_data,date_transformed_data_new])
     def add_changes_to_date_table(df:pd.DataFrame):
@@ -329,6 +353,7 @@ def etl_process():
     airports = tranform_airports(data_airports)
     times = transform_time_table(data)
     dates = transform_date_table(data)
+    delays = transform_delays_table(data)
     cancelations = transform_cancelations_table(data)
 
     save_date = add_changes_to_date_table(dates)
