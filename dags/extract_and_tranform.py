@@ -114,7 +114,7 @@ def etl_process():
 
 
     @task()
-    def create_date_table(df):
+    def transform_date_table(df):
         def add_date(new_date, date_table_dict):
             # dodaje nową datę do dict date_table_dict, gdzie new_date to string w formacie YYYY-MM-DD, a date_table_dict
             # przechowuje elementy, które trafią do dataframe
@@ -186,7 +186,7 @@ def etl_process():
     
 
     @task()
-    def create_time_table(df):
+    def transform_time_table(df):
         def create_time_frame():
 
             # tworzę szkielet słownika, który, po uzupełnieniu danymi, zostanie przekształcony na dataframe
@@ -247,6 +247,18 @@ def etl_process():
             return time_table
         
         return create_time_frame()
+
+    @task()
+    def transform_cancelations_table(df:pd.DataFrame):
+
+        df = df[["CANCELLED","CANCELLATION_CODE"]]
+        df.drop_duplicates(inplace=True)
+        
+        df['cancelation_id_pk'] = df.index
+        df.rename(columns={"CANCELLED":'is_canceled', 'CANCELLATION_CODE':'CANCELLATION_CODE'.lower()})
+
+        return df
+    
 
     @task(outlets=[date_transformed_data,date_transformed_data_new])
     def add_changes_to_date_table(df:pd.DataFrame):
@@ -315,8 +327,9 @@ def etl_process():
 
     air_carriers = tranform_air_carriers(data_carriers)
     airports = tranform_airports(data_airports)
-    times = create_time_table(data)
-    dates = create_date_table(data)
+    times = transform_time_table(data)
+    dates = transform_date_table(data)
+    cancelations = transform_cancelations_table(data)
 
     save_date = add_changes_to_date_table(dates)
     save_air_cattiets = add_changes_to_air_carriers_table(air_carriers)
