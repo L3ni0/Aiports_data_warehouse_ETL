@@ -725,8 +725,8 @@ def etl_process():
     save_delay = add_changes_to_delay_table(delays1)
 
     flights = transform_flight_table(data, save_airports, save_date, save_delay)
-    check_flight_data_validity(flights)
-    save_flights = add_changes_to_flikghts_table(flights)
+    flights1 = check_flight_data_validity(flights)
+    save_flights = add_changes_to_flikghts_table(flights1)
 
 
 etl_process()
