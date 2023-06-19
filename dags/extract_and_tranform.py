@@ -536,6 +536,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     @task()
     def check_date_data_validity(df: pd.DataFrame):
@@ -587,6 +588,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     @task()
     def check_airports_data_validity(df: pd.DataFrame):
@@ -614,6 +616,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     @task()
     def check_aircarriers_data_validity(df: pd.DataFrame):
@@ -640,6 +643,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     @task()
     def check_delay_data_validity(df: pd.DataFrame):
@@ -660,6 +664,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     @task()
     def check_time_data_validity(df: pd.DataFrame):
@@ -692,6 +697,7 @@ def etl_process():
                     print("dane poprawne w ", column)
                 else:
                     print("nieprawdłowe dane w ", column)
+        return df
 
     data = load_data_nationwide()
     data_carriers = load_air_carriers()
@@ -704,19 +710,19 @@ def etl_process():
     delays = transform_delays_table(data)
     cancelations = transform_cancelations_table(data)
 
-    check_aircarriers_data_validity(air_carriers)
-    check_airports_data_validity(airports)
-    check_time_data_validity(times)
-    check_date_data_validity(dates)
-    check_delay_data_validity(delays)
+    air_carriers1 = check_aircarriers_data_validity(air_carriers)
+    airports1 = check_airports_data_validity(airports)
+    times1 = check_time_data_validity(times)
+    dates1 = check_date_data_validity(dates)
+    delays1 = check_delay_data_validity(delays)
 
 
-    save_date = add_changes_to_date_table(dates)
-    save_air_carriers = add_changes_to_air_carriers_table(air_carriers)
-    save_airports = add_changes_to_airports_table(airports)
+    save_date = add_changes_to_date_table(dates1)
+    save_air_carriers = add_changes_to_air_carriers_table(air_carriers1)
+    save_airports = add_changes_to_airports_table(airports1)
     save_cancelations = add_changes_to_cancelations_table(cancelations)
-    save_times = add_changes_to_time_table(times)
-    save_delay = add_changes_to_delay_table(delays)
+    save_times = add_changes_to_time_table(times1)
+    save_delay = add_changes_to_delay_table(delays1)
 
     flights = transform_flight_table(data, save_airports, save_date, save_delay)
     check_flight_data_validity(flights)
